@@ -13,7 +13,7 @@ async def search_torrents_endpoint(q: str):
         raise HTTPException(status_code=500, detail="TORBOX_API_KEY not configured on server")
 
     # 1. Cerca il torrent (ora asincrono, su apibay.org)
-    torrents = await search_torrents(q)
+    torrents =  search_torrents(q)
     if not torrents:
         raise HTTPException(status_code=404, detail="No torrents found")
 
@@ -23,7 +23,7 @@ async def search_torrents_endpoint(q: str):
         raise HTTPException(status_code=500, detail="Magnet link not available")
 
     # 2. Ottieni il link di streaming da TorBox
-    stream_url = await get_streamable_link(magnet_link, api_token)
+    stream_url =  get_streamable_link(magnet_link, api_token)
     if not stream_url:
         raise HTTPException(status_code=500, detail="Failed to generate stream URL")
 
