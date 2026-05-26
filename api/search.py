@@ -32,7 +32,6 @@ async def search_torrents_endpoint(q: str):
     if not stream_url:
         raise HTTPException(status_code=500, detail="Failed to generate stream URL")
 
-    # 3. Risposta finale
     return {
         "title": best_match["name"],
         "artist": "Unknown Artist",
