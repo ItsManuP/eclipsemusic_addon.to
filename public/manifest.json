@@ -1,9 +1,9 @@
 {
-    "id": "com.eclipse.addonto",
-    "name": "Torrent Player",
-    "version": "1.0.0",
-    "description": "",
-    "resources": ["search", "stream"],
-    "types": ["track"],
-    "url": "https://eclipseaddonto.vercel.app"
+  "id": "com.itsmanu.torrentplayer",
+  "name": "Torrent Player",
+  "version": "1.0.0",
+  "description": "Cerca e riproduce musica da torrent via TorBox",
+  "resources": ["search", "stream", "catalog"],
+  "types": ["track", "album", "artist", "playlist"],
+  "url": "https://eclipsemusicaddonto.vercel.app"
 }
