@@ -52,15 +52,38 @@ async def add_torrent_to_torbox(magnet: str, api_token: str, max_retries=3):
     raise Exception("Impossibile aggiungere il torrent dopo vari tentativi")
 
 
-async def get_torrent_status(torrent_id: str, api_token: str):
+# Aggiungi una nuova funzione per ottenere auth_id
+async def add_torrent_to_torbox(magnet: str, api_token: str):
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        headers = {"Authorization": f"Bearer {api_token}"}
+        resp = await client.post(
+            f"{TORBOX_API_URL}/torrents/createtorrent",
+            data={"magnet": magnet},
+            headers=headers
+        )
+        if resp.status_code != 200:
+            raise Exception(f"HTTP {resp.status_code}: {resp.text}")
+        result = resp.json()
+        if not result.get("success"):
+            raise Exception(f"TorBox API error: {result.get('error')}")
+        data = result["data"]
+        torrent_id = data.get("torrent_id")
+        auth_id = data.get("auth_id")
+        if not auth_id:
+            raise Exception(f"auth_id non trovato in data: {data}")
+        return {"torrent_id": torrent_id, "auth_id": auth_id}
+
+async def get_torrent_status(auth_id: str, api_token: str):
     async with httpx.AsyncClient(timeout=10.0) as client:
         headers = {"Authorization": f"Bearer {api_token}"}
+        # Usa auth_id come torrent_id? L'endpoint controltorrent accetta l'auth_id al posto del torrent_id?
         info_resp = await client.post(
-            f"{TORBOX_API_URL}/torrents/controltorrent?torrent_id={torrent_id}&op=info",
+            f"{TORBOX_API_URL}/torrents/controltorrent?torrent_id={auth_id}&op=info",
             headers=headers
         )
         if info_resp.status_code != 200:
-            return {"status": "error", "detail": f"HTTP {info_resp.status_code}"}
+            print(f"Errore controltorrent: {info_resp.status_code} - {info_resp.text}")
+            return {"status": "error", "detail": f"HTTP {info_resp.status_code}: {info_resp.text}"}
         info = info_resp.json()
         if not info.get("success"):
             return {"status": "error", "detail": info.get("error")}
@@ -73,7 +96,7 @@ async def get_torrent_status(torrent_id: str, api_token: str):
         if not audio_file:
             return {"status": "error", "detail": "No audio file found"}
         stream_resp = await client.get(
-            f"{TORBOX_API_URL}/torrents/requestdl?torrent_id={torrent_id}&file_id={audio_file['id']}",
+            f"{TORBOX_API_URL}/torrents/requestdl?torrent_id={auth_id}&file_id={audio_file['id']}",
             headers=headers,
             follow_redirects=True
         )
