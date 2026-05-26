@@ -3,7 +3,7 @@
   "name": "Torrent Player (Polling)",
   "version": "1.1.0",
   "description": "Riproduce musica da torrent via TorBox con polling",
-  "resources": ["search"],
-  "types": ["track"],
+  "resources": ["search", "stream", "catalog"],
+  "types": ["track", "album", "artist", "playlist"],
   "url": "https://eclipsemusicaddonto.vercel.app/addon/"
 }
