@@ -23,8 +23,6 @@ async def search_torrents(query: str):
 
 @app.get("/search")
 async def search_endpoint(q: str):
-    # Opzionale: leggi token TorBox se necessario
-    # api_token = os.environ.get("TORBOX_API_KEY")
     torrents = await search_torrents(q)
     if not torrents:
         raise HTTPException(404, "Nessun torrent trovato")
@@ -33,6 +31,11 @@ async def search_endpoint(q: str):
         "magnet": torrents[0]["magnet"],
         "seeders": torrents[0]["seeders"]
     }
+
+@app.get("/query")
+async def query_alias(q: str):
+    """Alias per compatibilità con /query"""
+    return await search_endpoint(q)
 
 @app.get("/")
 async def root():
