@@ -7,7 +7,6 @@ app = FastAPI()
 
 TORBOX_API_URL = "https://api.torbox.app/v1/api"
 
-# ------------------- Helper: ricerca su apibay (The Pirate Bay) -------------------
 async def search_apibay(query: str):
     url = f"https://apibay.org/q.php?q={query}&cat=100"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
@@ -28,7 +27,6 @@ async def search_apibay(query: str):
     results.sort(key=lambda x: x["seeders"], reverse=True)
     return results
 
-# ------------------- Helper: aggiungi torrent a TorBox -------------------
 async def add_torrent_to_torbox(magnet: str, api_token: str):
     async with httpx.AsyncClient(timeout=10.0) as client:
         headers = {"Authorization": f"Bearer {api_token}"}
@@ -50,7 +48,6 @@ async def add_torrent_to_torbox(magnet: str, api_token: str):
             raise Exception(f"Campo 'torrent_id' non trovato in data: {data}")
         return str(torrent_id)
 
-# ------------------- Helper: controlla stato torrent -------------------
 async def get_torrent_status(torrent_id: str, api_token: str):
     async with httpx.AsyncClient(timeout=10.0) as client:
         headers = {"Authorization": f"Bearer {api_token}"}
@@ -78,7 +75,15 @@ async def get_torrent_status(torrent_id: str, api_token: str):
         )
         return {"status": "completed", "stream_url": str(stream_resp.url), "filename": audio_file["name"]}
 
-# ------------------- Endpoint /search -------------------
+async def wait_for_stream(torrent_id: str, api_token: str, timeout_seconds: int = 8):
+    start = asyncio.get_event_loop().time()
+    while (asyncio.get_event_loop().time() - start) < timeout_seconds:
+        result = await get_torrent_status(torrent_id, api_token)
+        if result["status"] == "completed":
+            return result["stream_url"]
+        await asyncio.sleep(1)
+    return None
+
 @app.get("/search")
 async def search_endpoint(q: str):
     api_token = os.environ.get("TORBOX_API_KEY")
@@ -94,16 +99,13 @@ async def search_endpoint(q: str):
         torrent_id = await add_torrent_to_torbox(best["magnet"], api_token)
     except Exception as e:
         raise HTTPException(500, f"TorBox error: {str(e)}")
-    # Restituiamo anche info_hash per eventuale uso
     return {
         "torrent_id": torrent_id,
         "title": best["name"],
         "status": "downloading",
-        "info_hash": best["info_hash"],
-        "message": "Use /status?torrent_id=... or /stream/{torrent_id}"
+        "info_hash": best["info_hash"]
     }
 
-# ------------------- Endpoint /status (per polling) -------------------
 @app.get("/status")
 async def status_endpoint(torrent_id: str):
     api_token = os.environ.get("TORBOX_API_KEY")
@@ -119,30 +121,21 @@ async def status_endpoint(torrent_id: str):
     else:
         raise HTTPException(404, result.get("detail", "Torrent not ready or error"))
 
-# ------------------- Endpoint /stream/{torrent_id} (per Eclipse) -------------------
 @app.get("/stream/{torrent_id}")
 async def stream_endpoint(torrent_id: str):
-    """Endpoint chiamato da Eclipse Music per ottenere lo stream URL."""
     api_token = os.environ.get("TORBOX_API_KEY")
     if not api_token:
         raise HTTPException(500, "TORBOX_API_KEY not configured")
-    result = await get_torrent_status(torrent_id, api_token)
-    if result["status"] == "completed":
-        # Eclipse si aspetta un oggetto con 'stream' o direttamente 'url'?
-        # Seguiamo il formato di SpotiFLAC: {"stream": [{"url": "..."}]}
-        return {"stream": [{"url": result["stream_url"]}]}
-    elif result["status"] in ("downloading", "queued", "processing", "cached"):
-        raise HTTPException(404, "Stream not ready yet")
+    stream_url = await wait_for_stream(torrent_id, api_token)
+    if stream_url:
+        return {"stream": [{"url": stream_url}]}
     else:
-        raise HTTPException(404, "Stream not available")
+        raise HTTPException(404, "Stream not ready yet")
 
-# ------------------- Endpoint /catalog/{catalog_id}/{type} -------------------
 @app.get("/catalog/{catalog_id}/{type}")
 async def catalog_endpoint(catalog_id: str, type: str, page: int = 1):
-    """Ritorna un catalogo di brani popolari (esempio)."""
-    # Per ora solo un esempio statico per test
+    # Per ora solo esempio statico
     if catalog_id == "top-tracks" and type == "track":
-        # Potresti popolare dinamicamente da apibay con una query predefinita (es. "top 100")
         return {
             "metas": [
                 {"id": "31966839", "name": "Metallica - 72 Seasons", "type": "track"},
@@ -152,7 +145,6 @@ async def catalog_endpoint(catalog_id: str, type: str, page: int = 1):
     else:
         raise HTTPException(404, "Catalog not found")
 
-# ------------------- Endpoint /manifest.json (dinamico) -------------------
 @app.get("/manifest.json")
 async def serve_manifest():
     return {
@@ -165,7 +157,6 @@ async def serve_manifest():
         "url": "https://eclipsemusicaddonto.vercel.app"
     }
 
-# ------------------- Root -------------------
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "Eclipse Torrent Addon (full)"}
