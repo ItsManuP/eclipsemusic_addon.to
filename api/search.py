@@ -113,3 +113,15 @@ async def status_endpoint(torrent_id: str):
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "Eclipse Torrent Addon (async TorBox)"}
+
+@app.get("/manifest.json")
+async def serve_manifest():
+    return {
+        "id": "com.itsmanu.torrentplayer",
+        "name": "Torrent Player",
+        "version": "1.0.0",
+        "description": "Cerca e riproduce musica da torrent via TorBox",
+        "resources": ["search"],
+        "types": ["track"],
+        "url": "https://eclipsemusicaddonto.vercel.app"
+    }
