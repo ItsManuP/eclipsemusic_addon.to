@@ -1,14 +1,12 @@
 {
-    "builds": [
-        {
-            "src": "api/search.py",
-            "use": "@vercel/python"
-        }
-    ],
-    "routes": [
-        {
-            "src": "/(.*)",
-            "dest": "api/search.py"
-        }
-    ]
+  "builds": [
+    { "src": "api/search.py", "use": "@vercel/python" },
+    { "src": "index.html", "use": "@vercel/static" },
+    { "src": "manifest.json", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "/manifest.json", "dest": "/manifest.json" },
+    { "src": "/index.html", "dest": "/index.html" },
+    { "src": "/(.*)", "dest": "api/search.py" }
+  ]
 }
