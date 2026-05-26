@@ -1,1 +1,9 @@
-
+{
+    "id": "com.tuoindirizzo.torrentplayer",
+    "name": "Torrent Player",
+    "version": "1.0.0",
+    "description": "",
+    "resources": ["search"],
+    "types": ["track"],
+    "url": "https://eclipseaddonto.vercel.app"
+}
