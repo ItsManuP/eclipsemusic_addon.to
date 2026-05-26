@@ -1,40 +1,34 @@
-import os
-from fastapi import FastAPI, HTTPException
-from utils.torrent_scraper import search_torrents
-from utils.torbox import get_streamable_link
+import httpx
+from bs4 import BeautifulSoup
+from typing import List, Dict, Any, Optional
 
-app = FastAPI()
+BASE_URL = "https://www.1377x.to"
 
-@app.get("/search")
-async def search_torrents_endpoint(q: str):
-    # Leggi il token dalle variabili d'ambiente di Vercel
-    api_token = os.environ.get("TORBOX_API_KEY")
-    if not api_token:
-        raise HTTPException(status_code=500, detail="TORBOX_API_KEY not configured on server")
-
-    # 1. Cerca il torrent (ora asincrono, su apibay.org)
-    torrents =  search_torrents(q)
-    if not torrents:
-        raise HTTPException(status_code=404, detail="No torrents found")
-
-    best_match = torrents[0]
-    magnet_link = best_match.get("magnet")
-    if not magnet_link:
-        raise HTTPException(status_code=500, detail="Magnet link not available")
-
-    # 2. Ottieni il link di streaming da TorBox
-    stream_url =  get_streamable_link(magnet_link, api_token)
-    if not stream_url:
-        raise HTTPException(status_code=500, detail="Failed to generate stream URL")
-
-    return {
-        "title": best_match["name"],
-        "artist": "Unknown Artist",
-        "stream_url": stream_url,
-        "format": "audio/mpeg",
-        "quality": "320kbps"
-    }
-
-@app.get("/")
-async def root():
-    return {"message": "Eclipse Torrent Addon with TorBox is running. Use /search?q=..."}
+async def search_torrents(query: str) -> List[Dict[str, Any]]:
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        url = f"{BASE_URL}/search/music/{query}/1/"
+        resp = await client.get(url, headers=headers)
+        if resp.status_code != 200:
+            return []
+        soup = BeautifulSoup(resp.text, "html.parser")
+        rows = soup.select("table.table-list tbody tr")
+        torrents = []
+        for row in rows:
+            link_tag = row.select_one("td.coll-1 a[href*='/torrent/']")
+            if not link_tag:
+                continue
+            torrent_url = BASE_URL + link_tag.get("href")
+            title = link_tag.get_text(strip=True)
+            seeders = int(row.select_one("td.coll-2").get_text(strip=True) or 0)
+            torrents.append({
+                "name": title,
+                "seeders": seeders,
+                "torrent_url": torrent_url
+            })
+        torrents.sort(key=lambda x: x["seeders"], reverse=True)
+        # Poi per il miglior risultato, ottieni il magnet (chiamata separata)
+        if torrents:
+            magnet = await _get_magnet(torrents[0]["torrent_url"], client)
+            torrents[0]["magnet"] = magnet
+        return torrents
