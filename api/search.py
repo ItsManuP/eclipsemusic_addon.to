@@ -1,72 +1,61 @@
 import os
-import cloudscraper
-from bs4 import BeautifulSoup
 from fastapi import FastAPI, HTTPException
+from py1337x import AsyncPy1337x
+from torbox_api import TorboxApi
 
 app = FastAPI()
 
-def search_1337x(query: str):
-    """
-    Cerca un torrent su 1337x e restituisce le informazioni del primo risultato valido.
-    """
-    print(f"[LOG] Avvio ricerca per: {query}")
-    
-    # 1. Prepara la richiesta
-    search_url = f"https://1337x.to/search/{query}/1/"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-    }
-    scraper = cloudscraper.create_scraper()
-    
-    # 2. Esegue la richiesta
+# Inizializza lo scraper specializzato all'avvio dell'applicazione
+scraper = AsyncPy1337x()
+
+async def get_streamable_link(magnet_link: str, api_token: str):
+    """Invia il magnet link a TorBox e restituisce l'URL per lo streaming."""
+    sdk = TorboxApi(access_token=api_token)
     try:
-        response = scraper.get(search_url, headers=headers, timeout=10)
-        response.raise_for_status()
-    except Exception as e:
-        print(f"[ERROR] Richiesta fallita: {e}")
+        # 1. Aggiunge il torrent a TorBox
+        add_result = await sdk.torrents.create_torrent(request_body={"magnet": magnet_link})
+        torrent_id = add_result.data["id"]
+        # 2. Seleziona il primo file audio trovato (mp3, flac, wav...)
+        files = add_result.data.get("files", [])
+        audio_file = next((f for f in files if f["name"].lower().endswith(('.mp3', '.flac', '.m4a', '.wav'))), None)
+        if not audio_file:
+            return None
+        # 3. Ottiene l'URL diretto per lo streaming
+        stream_response = await sdk.torrents.request_download_link(
+            torrent_id=torrent_id, file_id=audio_file["id"]
+        )
+        return stream_response.url
+    except Exception:
         return None
-
-    # 3. Analizza l'HTML della pagina dei risultati
-    soup = BeautifulSoup(response.text, 'html.parser')
-    # Cerca la prima riga della tabella dei risultati (escludendo l'header)
-    first_row = soup.select('tbody tr')
-    if not first_row:
-        print("[WARN] Nessun risultato trovato.")
-        return None
-
-    # Estrae il link alla pagina del torrent
-    torrent_link_tag = first_row[0].select_one('td.name a[href*="/torrent/"]')
-    if not torrent_link_tag:
-        return None
-    torrent_page_url = "https://1337x.to" + torrent_link_tag.get('href')
-    
-    # 4. Visita la pagina del torrent per ottenere il magnet link
-    torrent_page_response = scraper.get(torrent_page_url, headers=headers, timeout=10)
-    torrent_page_soup = BeautifulSoup(torrent_page_response.text, 'html.parser')
-    magnet_link_tag = torrent_page_soup.select_one('a[href*="magnet:?xt=urn:btih:"]')
-    
-    if not magnet_link_tag:
-        print("[WARN] Magnet link non trovato.")
-        return None
-        
-    magnet_link = magnet_link_tag.get('href')
-    print(f"[LOG] 🔗 Magnet link trovato: {magnet_link[:50]}...")
-    return magnet_link
 
 @app.get("/search")
 async def search_endpoint(q: str):
-    """
-    Endpoint principale per la ricerca.
-    """
-    if not q:
-        raise HTTPException(status_code=400, detail="Parametro 'q' mancante")
-    
-    magnet_link = search_1337x(q)
-    if not magnet_link:
+    api_token = os.environ.get("TORBOX_API_KEY")
+    if not api_token:
+        raise HTTPException(status_code=500, detail="TORBOX_API_KEY not configured")
+
+    # 1. Cerca il torrent su 1337x nella categoria MUSICA
+    # ⚠️ È fondamentale specificare la 'category' per evitare risultati vuoti
+    search_results = await scraper.search(q, category="MUSIC")
+
+    if not search_results or not search_results.get('items'):
         raise HTTPException(status_code=404, detail="Nessun torrent trovato")
-    
-    return {"magnet": magnet_link}
+
+    # Prende il risultato con più seeders (il più popolare)
+    best_match = search_results['items'][0]
+    # Ottiene i dettagli completi (incluso il magnet link) usando il torrent_id
+    torrent_info = await scraper.info(torrent_id=best_match['torrent_id'])
+
+    # 2. Ottiene l'URL di streaming da TorBox
+    stream_url = await get_streamable_link(torrent_info['magnet'], api_token)
+    if not stream_url:
+        raise HTTPException(status_code=500, detail="Impossibile generare il link di streaming")
+
+    return {
+        "title": best_match['name'],
+        "stream_url": stream_url,
+    }
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "message": "API di ricerca torrent per Eclipse Music"}
+    return {"status": "ok", "message": "API di ricerca torrent per Eclipse Music (con TorBox)"}
