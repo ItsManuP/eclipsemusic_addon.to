@@ -4,3 +4,6 @@ httpx
 pydantic
 cloudscraper
 beautifulsoup4
+fastapi
+uvicorn
+httpx
